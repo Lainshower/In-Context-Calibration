@@ -1,0 +1,4 @@
+git clone https://huggingface.co/sgugger/sharded-gpt-j-6B
+cd sharded-gpt-j-6B
+git-lfs install
+git lfs pull

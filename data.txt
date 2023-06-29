@@ -1,0 +1,16 @@
+conda create --name data python=3.8
+conda activate data
+pip install datasets==1.4.0 wget
+pip install scikit-learn==1.2.2
+pip install nltk==3.8.1
+pip install pandas==2.0.2
+
+# requiremets for datasets
+# conda create -n data python=3.6.9
+# conda activate data
+# pip install datasets==1.4.0 py7zr wget
+# For reproducing the baseline methods
+# pip install torch==1.1.0 higher==0.2.1 scikit-learn==0.24.1 scipy==1.4.1 rouge==1.0.0
+# pip install git+https://github.com/huggingface/transformers.git@7b75aa9fa55bee577e2c7403301ed31103125a35
+# pip install pandas==2.0.2
+# scikit-learn-1.2.2 scipy-1.10.1 threadpoolctl-3.1.0
