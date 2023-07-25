@@ -50,6 +50,36 @@ def random_sampling(sentences, labels, num):
     selected_labels = [labels[i] for i in idxs]
     return deepcopy(selected_sentences), deepcopy(selected_labels)
 
+def stratify_random_sampling(sentences, labels, num):
+    """randomly sample subset of the training pairs"""
+    assert len(sentences) == len(labels)
+    
+    # Determine the number of classes
+    n_classes = len(np.unique(labels))
+    
+    # Check if the requested sample size is a multiple of the number of classes
+    if num % n_classes != 0:
+        print(f"Warning: the number to sample {num} is not a multiple of the number of classes {n_classes}.")
+        print(f"Re assigning sampling {num} to a multiple of the number of classes {n_classes}.(i.e. *2)")
+        num = n_classes * 2
+
+    # Determine the number of samples per class
+    samples_per_class = num // n_classes
+
+    # Perform stratified sampling
+    selected_sentences = []
+    selected_labels = []
+    for label in np.unique(labels):
+        idxs = np.where(np.array(labels) == label)[0]
+        if len(idxs) < samples_per_class:
+            print(f"Warning: not enough samples in class {label} for stratified sampling.")
+            return None, None
+        selected_idxs = np.random.choice(idxs, size=samples_per_class, replace=False)
+        selected_sentences.extend([sentences[i] for i in selected_idxs])
+        selected_labels.extend([labels[i] for i in selected_idxs])
+    
+    return selected_sentences, selected_labels  #[joonwon] return 받은 sentence shuffle해서 사용.
+
 gpt_model = None
 gpt_tokenzier = None
 def setup_gpt2(model_name):
@@ -205,16 +235,21 @@ def complete(prompt, l, model, temp=0, num_log_probs=None, echo=False, n=None):
         setup_gpt3()
         return complete_gpt3(prompt, l=l, model_name=model, num_log_probs=num_log_probs, echo=echo, n=n)
 
-def construct_prompt(params, train_sentences, train_labels, test_sentence):
+def construct_prompt(params, train_sentences, train_labels, test_sentence, prefix=True):
     """construct a single prompt to be fed into the model"""
     # special case when the user defines a custom prompt function. 
     if ('prompt_func' in params.keys()) and (params['prompt_func'] is not None):
         return params['prompt_func'](params, train_sentences, train_labels, test_sentence)
 
     # take the prompt template and fill in the training and test example
-    prompt = params["prompt_prefix"] # instruction
-    q_prefix = params["q_prefix"]
-    a_prefix = params["a_prefix"]
+    if not prefix:
+        prompt = ''
+        q_prefix = ''
+        a_prefix = ' '
+    else:
+        prompt = params["prompt_prefix"] # instruction
+        q_prefix = params["q_prefix"]
+        a_prefix = params["a_prefix"]
     for s, l in zip(train_sentences, train_labels):
         prompt += q_prefix
         prompt += s + "\n"
@@ -293,7 +328,7 @@ def save_pickle(params, data):
     print(f"Saved to {file_name}")
     return data
 
-def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Original Domain Calibrated F1', 'tw F1', 'to F1', '18 F1')):
+def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain Calibrated F1', 'Neutral Context Calibrated F1')):
     # print out all results
     root = deepcopy(tree)
     for dataset in root.keys():
@@ -303,17 +338,19 @@ def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Origina
             print(f"\nModel: {model}")
             num_shots_node = models_node[model]
             for num_shots in num_shots_node.keys():
-                f1_score = np.array(list(num_shots_node[num_shots].values()))
-                f1_score_mean = np.mean(f1_score, axis=0)
-                f1_score_low = np.min(f1_score, axis=0)
-                f1_score_high = np.max(f1_score, axis=0)
-                f1_score_std = np.std(f1_score, axis=0)
+                num_calibration_line_node = num_shots_node[num_shots]
+                for line in num_calibration_line_node.keys():
+                    f1_score = np.array(list(num_calibration_line_node[line].values()))
+                    f1_score_mean = np.mean(f1_score, axis=0)
+                    f1_score_low = np.min(f1_score, axis=0)
+                    f1_score_high = np.max(f1_score, axis=0)
+                    f1_score_std = np.std(f1_score, axis=0)
 
-                print(f"\n{num_shots}-shot, {len(f1_score)} seeds")
-                for i, (m, l, h, s) in enumerate(zip(f1_score_mean, f1_score_low, f1_score_high, f1_score_std)):
-                    print(f"{names[i]} | Mean: {m:.4f}, Low: {l:.4f}, High: {h:.4f}, Std: {s:.4f}")
+                    print(f"\n{num_shots}-shot, {line}-lines, {len(f1_score)} seeds")
+                    for i, (m, l, h, s) in enumerate(zip(f1_score_mean, f1_score_low, f1_score_high, f1_score_std)):
+                        print(f"{names[i]} | Mean: {m:.4f}, Low: {l:.4f}, High: {h:.4f}, Std: {s:.4f}")
 
-                print()
+                    print()
 
 # def print_results(tree, names=('Original Accuracy  ','Context Calibrated Accuracy', 'Domain Calibrated Accuracy')):
 #     # print out all results
@@ -351,3 +388,17 @@ def load_results(params_list):
             node = node[k]
         node[params['seed']] = saved_result['f1_scores']
     print_results(result_tree)
+
+class PrintLogger:
+    def __init__(self, log_file):
+        self.terminal = sys.stdout
+        self.log_file = log_file
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.terminal.flush()  # Flush the terminal output
+        with open(self.log_file, 'a') as f:
+            f.write(message)
+
+    def flush(self):
+        self.terminal.flush()

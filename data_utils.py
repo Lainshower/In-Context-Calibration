@@ -158,6 +158,34 @@ def load_subj():
                 exit('answer')
     return train_sentences, train_answers, test_sentences, test_answers
 
+def load_civil_comments():
+    train_sentences = []
+    train_answers = []
+    with open("./data/civil_comments/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Toxicity'] == 'neutral':
+                train_answers.append(0)
+            elif myjson['Toxicity'] == 'toxic':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/civil_comments/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['Text'])
+            if myjson['Toxicity'] == 'neutral':
+                test_answers.append(0)
+            elif myjson['Toxicity'] == 'toxic':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
+
 def load_mr():
     train_sentences = []
     train_answers = []
@@ -477,6 +505,76 @@ def load_wnli():
 
     return train_questions, train_answers, test_questions, test_answers
 
+def load_esnli():
+    train_questions = []
+    train_answers = []
+    with open("data/esnli/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'entailment':
+                train_answers.append(0)
+            elif myjson['label'] == 'neutral':
+                train_answers.append(1)
+            elif myjson['label'] == 'contradiction':
+                train_answers.append(2)
+            else:
+                exit('answer')
+            train_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+
+    test_questions = []
+    test_answers = []
+    with open("data/esnli/val.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'entailment':
+                test_answers.append(0)
+            elif myjson['label'] == 'neutral':
+                test_answers.append(1)
+            elif myjson['label'] == 'contradiction':
+                test_answers.append(2)
+            else:
+                exit('answer')
+            test_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+
+    return train_questions, train_answers, test_questions, test_answers
+
+def load_mnli():
+    train_questions = []
+    train_answers = []
+    with open("data/mnli/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'not_entailment':
+                train_answers.append(0)
+            elif myjson['label'] == 'entailment':
+                train_answers.append(1)
+            else:
+                exit('answer')
+            train_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+
+    test_questions = []
+    test_answers = []
+    with open("data/mnli/val.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'not_entailment':
+                test_answers.append(0)
+            elif myjson['label'] == 'entailment':
+                test_answers.append(1)
+            else:
+                exit('answer')
+            test_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+
+    return train_questions, train_answers, test_questions, test_answers
+
 def load_sick():
     train_questions = []
     train_answers = []
@@ -493,7 +591,7 @@ def load_sick():
                 train_answers.append(2)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' entailment, neutral, or contradiction?')
+            train_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
 
     test_questions = []
     test_answers = []
@@ -510,10 +608,181 @@ def load_sick():
                 test_answers.append(2)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' entailment, neutral, or contradiction?')
+            test_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
+def load_gutenberg_time():
+    train_sentences = []
+    train_answers = []
+    with open("./data/gutenberg_time/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'zero':
+                train_answers.append(0)
+            elif myjson['Label'] == 'one':
+                train_answers.append(1)
+            elif myjson['Label'] == 'two':
+                train_answers.append(2)
+            elif myjson['Label'] == 'three':
+                train_answers.append(3)
+            elif myjson['Label'] == 'four':
+                train_answers.append(4)
+            elif myjson['Label'] == 'five':
+                train_answers.append(5)
+            elif myjson['Label'] == 'six':
+                train_answers.append(6)
+            elif myjson['Label'] == 'seven':
+                train_answers.append(7)
+            elif myjson['Label'] == 'eight':
+                train_answers.append(8)
+            elif myjson['Label'] == 'night':
+                train_answers.append(9)
+            elif myjson['Label'] == 'ten':
+                train_answers.append(10)
+            elif myjson['Label'] == 'eleven':
+                train_answers.append(11)
+            elif myjson['Label'] == 'twelve':
+                train_answers.append(12)
+            elif myjson['Label'] == 'thirteen':
+                train_answers.append(13)
+            elif myjson['Label'] == 'fourteen':
+                train_answers.append(14)
+            elif myjson['Label'] == 'fifteen':
+                train_answers.append(15)
+            elif myjson['Label'] == 'sixteen':
+                train_answers.append(16)
+            elif myjson['Label'] == 'seventeen':
+                train_answers.append(17)
+            elif myjson['Label'] == 'eighteen':
+                train_answers.append(18)
+            elif myjson['Label'] == 'nineteen':
+                train_answers.append(19)
+            elif myjson['Label'] == 'twenty':
+                train_answers.append(20)
+            elif myjson['Label'] == 'twenty_one':
+                train_answers.append(21)
+            elif myjson['Label'] == 'twenty_two':
+                train_answers.append(22)
+            elif myjson['Label'] == 'twenty_three':
+                train_answers.append(23)  
+            else:
+                exit('answer')
+                
+    test_sentences = []
+    test_answers = []
+    with open("./data/gutenberg_time/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'zero':
+                test_answers.append(0)
+            elif myjson['Label'] == 'one':
+                test_answers.append(1)
+            elif myjson['Label'] == 'two':
+                test_answers.append(2)
+            elif myjson['Label'] == 'three':
+                test_answers.append(3)
+            elif myjson['Label'] == 'four':
+                test_answers.append(4)
+            elif myjson['Label'] == 'five':
+                test_answers.append(5)
+            elif myjson['Label'] == 'six':
+                test_answers.append(6)
+            elif myjson['Label'] == 'seven':
+                test_answers.append(7)
+            elif myjson['Label'] == 'eight':
+                test_answers.append(8)
+            elif myjson['Label'] == 'night':
+                test_answers.append(9)
+            elif myjson['Label'] == 'ten':
+                test_answers.append(10)
+            elif myjson['Label'] == 'eleven':
+                test_answers.append(11)
+            elif myjson['Label'] == 'twelve':
+                test_answers.append(12)
+            elif myjson['Label'] == 'thirteen':
+                test_answers.append(13)
+            elif myjson['Label'] == 'fourteen':
+                test_answers.append(14)
+            elif myjson['Label'] == 'fifteen':
+                test_answers.append(15)
+            elif myjson['Label'] == 'sixteen':
+                test_answers.append(16)
+            elif myjson['Label'] == 'seventeen':
+                test_answers.append(17)
+            elif myjson['Label'] == 'eighteen':
+                test_answers.append(18)
+            elif myjson['Label'] == 'nineteen':
+                test_answers.append(19)
+            elif myjson['Label'] == 'twenty':
+                test_answers.append(20)
+            elif myjson['Label'] == 'twenty_one':
+                test_answers.append(21)
+            elif myjson['Label'] == 'twenty_two':
+                test_answers.append(22)
+            elif myjson['Label'] == 'twenty_three':
+                test_answers.append(23)  
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
+
+def load_creak():
+    train_sentences = []
+    train_answers = []
+    with open("./data/creak/train.json", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['sentence'])
+            if myjson['label'] == 'false':
+                train_answers.append(0)
+            elif myjson['label'] == 'true':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/creak/dev.json", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['sentence'])
+            if myjson['label'] == 'false':
+                test_answers.append(0)
+            elif myjson['label'] == 'true':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
+
+def load_sbic():
+    train_sentences = []
+    train_answers = []
+    with open("./data/sbic/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Post'])
+            if myjson['Offensive'] == 'neutral':
+                train_answers.append(0)
+            elif myjson['Offensive'] == 'offensive':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/sbic/val.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['Post'])
+            if myjson['Offensive'] == 'neutral':
+                test_answers.append(0)
+            elif myjson['Offensive'] == 'offensive':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
 
 def load_hate_speech18():
     train_sentences = []
@@ -803,6 +1072,89 @@ def load_ethos_national_origin():
                 exit('answer')
     return train_sentences, train_answers, test_sentences, test_answers
 
+def load_ethos_gender():
+    train_sentences = []
+    train_answers = []
+    with open("./data/ethos-gender/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                train_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/ethos-gender/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                test_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
+
+def load_ethos_violence():
+    train_sentences = []
+    train_answers = []
+    with open("./data/ethos-violence/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                train_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/ethos-violence/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                test_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
+
+def load_ethos_disability():
+    train_sentences = []
+    train_answers = []
+    with open("./data/ethos-disability/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            train_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                train_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                train_answers.append(1)
+            else:
+                exit('answer')
+
+    test_sentences = []
+    test_answers = []
+    with open("./data/ethos-disability/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            test_sentences.append(myjson['Text'])
+            if myjson['Label'] == 'neutral':
+                test_answers.append(0)
+            elif myjson['Label'] == 'hate':
+                test_answers.append(1)
+            else:
+                exit('answer')
+    return train_sentences, train_answers, test_sentences, test_answers
 
 def load_dataset(params):
     """
@@ -861,6 +1213,16 @@ def load_dataset(params):
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
     
+    elif params['dataset'] == 'civil_comments':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_civil_comments()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Text: "
+        params["a_prefix"] = "Toxicity: "
+        params['label_dict'] = {0: ['neutral'], 1: ['toxic']}
+        params['inv_label_dict'] = {'neutral': 0, 'toxic': 1}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
     elif params['dataset'] == 'subj':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_subj()
         params['prompt_prefix'] = ""
@@ -913,6 +1275,27 @@ def load_dataset(params):
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
     
+    elif params['dataset'] == 'mnli':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_mnli()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = " "
+        params["a_prefix"] = "answer: "
+        params['label_dict'] = {0: ['False'], 1: ['True']}
+        params['inv_label_dict'] = {'False': 0, 'True': 1}
+        params['num_user_input'] = 2
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'esnli':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_esnli()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = " "
+        params["a_prefix"] = "answer: "
+        params['label_dict'] = {0: ['True'], 1: ['neutral'], 2: ['False']}
+        params['inv_label_dict'] = {'True': 0, 'neutral': 1, 'False': 2}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
     elif params['dataset'] == 'cb':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = get_cb()
         params['prompt_prefix'] = ""
@@ -926,10 +1309,30 @@ def load_dataset(params):
     elif params['dataset'] == 'sick':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_sick()
         params['prompt_prefix'] = ""
-        params["q_prefix"] = ""
+        params["q_prefix"] = " "
         params["a_prefix"] = "answer: "
-        params['label_dict'] = {0: ['entailment'], 1: ['neutral'], 2: ['contradiction']}
-        params['inv_label_dict'] = {'entailment': 0, 'neutral': 1, 'contradiction': 2}
+        params['label_dict'] = {0: ['True'], 1: ['neutral'], 2: ['False']}
+        params['inv_label_dict'] = {'True': 0, 'neutral': 1, 'False': 2}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+
+    elif params['dataset'] == 'creak':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_creak()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Claim: "
+        params["a_prefix"] = "Factuality: "
+        params['label_dict'] = {0: ['False'], 1: ['True']}
+        params['inv_label_dict'] = {'False': 0, 'True': 1}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+
+    elif params['dataset'] == 'sbic':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_sbic()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Post: "
+        params["a_prefix"] = "Label: "
+        params['label_dict'] = {0: ['neutral'], 1: ['offensive']}
+        params['inv_label_dict'] = {'neutral': 0, 'offensive': 1}
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
 
@@ -992,6 +1395,16 @@ def load_dataset(params):
         params['inv_label_dict'] = {'neutral': 0, 'hate': 1}
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'gutenbert_time':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_gutenberg_time()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Text: "
+        params["a_prefix"] = ": "
+        params['label_dict'] = {0: ['0'], 1: ['1'], 2: ['2'], 3: ['3'], 4: ['4'], 5: ['5'], 6: ['6'], 7: ['7'], 8: ['8'], 9: ['9'], 10: ['10'], 11: ['11'], 12: ['12'], 13: ['13'], 14: ['14'], 15: ['15'], 16: ['16'], 17: ['17'], 18: ['18'], 19: ['19'], 20: ['20'], 21: ['21'], 22: ['22'], 23: ['23']}
+        params['inv_label_dict'] = {0: '0', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '10', 11: '11', 12: '12', 13: '13', 14: '14', 15: '15', 16: '16', 17: '17', 18: '18', 19: '19', 20: '20', 21: '21', 22: '22', 23: '23'}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
 
     elif params['dataset'] == 'ethos-binary':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_ethos_binary()
@@ -1025,6 +1438,36 @@ def load_dataset(params):
     
     elif params['dataset'] == 'ethos-national_origin':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_ethos_national_origin()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Text: "
+        params["a_prefix"] = "Label: "
+        params['label_dict'] = {0: ['neutral'], 1: ['hate']}
+        params['inv_label_dict'] = {'neutral': 0, 'hate': 1}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'ethos-gender':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_ethos_gender()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Text: "
+        params["a_prefix"] = "Label: "
+        params['label_dict'] = {0: ['neutral'], 1: ['hate']}
+        params['inv_label_dict'] = {'neutral': 0, 'hate': 1}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'ethos-violence':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_ethos_violence()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = "Text: "
+        params["a_prefix"] = "Label: "
+        params['label_dict'] = {0: ['neutral'], 1: ['hate']}
+        params['inv_label_dict'] = {'neutral': 0, 'hate': 1}
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'ethos-disability':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_ethos_disability()
         params['prompt_prefix'] = ""
         params["q_prefix"] = "Text: "
         params["a_prefix"] = "Label: "
