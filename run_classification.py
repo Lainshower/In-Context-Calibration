@@ -2,17 +2,18 @@ import argparse
 from data_utils import load_dataset
 from utils import *
 
-def main(models, datasets, all_shots, num_seeds, subsample_test_set, num_contexts, num_of_calibration, api_num_log_prob, approx, use_saved_results, bs): 
+def main(models, datasets, all_shots, num_seeds, subsample_test_set, replace_ratio, api_num_log_prob, approx, do_task_learning, perform_chaining_effect, use_saved_results, bs): 
     """
     Run experiment or load past results, print accuracy
     """
     default_params = {
         'conditioned_on_correct_classes': True,
         'subsample_test_set': subsample_test_set,
-        'num_contexts': num_contexts,
         'api_num_log_prob': api_num_log_prob,
         'approx': approx,
         'bs': bs,
+        'do_task_learning': do_task_learning,
+        'perform_chaining_effect': perform_chaining_effect,
     }
 
     # list of all experiment parameters to run
@@ -20,21 +21,30 @@ def main(models, datasets, all_shots, num_seeds, subsample_test_set, num_context
     for model in models:
         for dataset in datasets:
             for num_shots in all_shots:
-                for seed in range(num_seeds):   
-                    for calibration_lines in num_of_calibration: # calibration line modify
+                for ratio in replace_ratio: 
+                    for seed in range(num_seeds):       
                         p = deepcopy(default_params)
                         p['model'] = model
                         p['dataset'] = dataset
-                        p['seed'] = seed
-                        p['num_calibrations'] = calibration_lines
                         p['num_shots'] = num_shots
-                        p['expr_name'] = f"{p['dataset']}_{get_model_name(p['model'])}_{p['num_shots']}shot_{repr(p['subsample_test_set'])}_subsample_seed{p['seed']}_{p['num_calibrations']}lines" # calibration line modifiy
+                        p['ratio'] = ratio
+                        p['seed'] = seed
+                        p['expr_name'] = f"{p['dataset']}_{get_model_name(p['model'])}_{p['num_shots']}shot_{repr(p['subsample_test_set'])}_{p['ratio']}_subsample_seed{p['seed']}" 
                         all_params.append(p)
 
     if use_saved_results:
         load_results(all_params)
     else:
-        log_file = f"./test_log/{p['dataset']}"
+        if not perform_chaining_effect:
+            log_dir = f"./log_{get_model_name(p['model'])}-do_task_learning-{do_task_learning}"
+            if not os.path.isdir(log_dir):
+                os.makedirs(log_dir)
+            log_file = f"./log_{get_model_name(p['model'])}-do_task_learning-{do_task_learning}/{p['dataset']}"
+        else:
+            log_dir = f"./log_{get_model_name(p['model'])}-perform_chaining_effect"
+            if not os.path.isdir(log_dir):
+                os.makedirs(log_dir)
+            log_file = f"./log_{get_model_name(p['model'])}-perform_chaining_effect/{p['dataset']}"
         logger = PrintLogger(log_file)
         sys.stdout = logger
         save_results(all_params)
@@ -56,8 +66,17 @@ def save_results(params_list, freeze_test_set=True):
 
         ### load data
         all_train_sentences, all_train_labels, all_test_sentences, all_test_labels = load_dataset(params)
-        params_check(params)
 
+        ### sample few-shot training examples
+        np.random.seed(params['seed'])
+        params['seed'] = (params['seed'] + 1) * np.random.randint(1, 99999990 + 1)
+        print(f"Seed - {params['seed']}")
+        if not params['perform_chaining_effect']:
+            train_sentences, train_labels = random_sampling(sentences=all_train_sentences, labels=all_train_labels, num=params['num_shots'], seed=params['seed'])
+        else:
+            # Perform Chaining Experiments 
+            train_sentences, train_labels, unqiue_label = random_sampling_by_label(sentences=all_train_sentences, labels=all_train_labels, num=params['num_shots'], seed=params['seed'], params=params)
+        
         ### sample test set
         if params['subsample_test_set'] is None:
             test_sentences, test_labels = all_test_sentences, all_test_labels
@@ -67,12 +86,23 @@ def save_results(params_list, freeze_test_set=True):
                 np.random.seed(0) # always use seed 0 result if freeze
             else:
                 np.random.seed(params['seed'])
-            test_sentences, test_labels = random_sampling(all_test_sentences, all_test_labels, params['subsample_test_set'])
-            print(f"selecting {len(test_labels)} subsample of test set")
+            if not params['perform_chaining_effect']:
+                test_sentences, test_labels = random_sampling(sentences=all_test_sentences, labels=all_test_labels, num=params['subsample_test_set'], seed=(params['seed']))
+                print(f"selecting {len(test_labels)} subsample of test set")
+            else:
+                # Perform Chaining Experiments
+                test_sentences, test_labels = random_sampling_exclude_label(all_test_sentences, all_test_labels, params['subsample_test_set'], unqiue_label, params, train_sentences)
+                count_dict, ratio_dict = count_and_ratio_numbers(test_labels)
+                print("Hard Negatives Count Dictionary:", count_dict)
+                print("Hard Negatives Ratio Dictionary:", ratio_dict)
 
-        ### sample few-shot training examples
-        np.random.seed(params['seed'])
-        train_sentences, train_labels = random_sampling(all_train_sentences, all_train_labels, params['num_shots'])
+
+        ### if do_task_learning, modifiy label_dict and inv_label_dict
+        if params['do_task_learning']:
+            params['label_dict'], params['inv_label_dict'] = generate_task_learning_dicts(n=len(params['label_dict']))
+
+        # Sanity Check before Experiments
+        params_check(params)
 
         ### Evaluate the performance and save all results
         # obtaining model's response on test examples
@@ -89,33 +119,51 @@ def save_results(params_list, freeze_test_set=True):
         # calculate P_cf
         p_cf = get_p_content_free(params, train_sentences, train_labels, content_free_inputs=content_free_inputs)
 
-        # Domain Calibration
-        print(f"Domain calibration for {len(test_sentences)} test sentences") 
-        p_df = get_domain_probs_original(params, train_sentences, train_labels, test_sentences, params['num_calibrations']) 
+        # Domain Calibration (tr)
+        print(f"Domain calibration (tr) for {len(test_sentences)} test sentences") 
+        p_df_tr = get_domain_probs_demonstration(params, train_sentences, train_labels, test_sentences, 20) 
 
-        # Neutral Calibration
-        print(f"Neutral Context calibration for {len(test_sentences)} test sentences") 
-        p_df_neutral = get_neutral_probs(params, train_sentences, train_labels, all_train_sentences, all_train_labels, params['num_contexts'], params['num_calibrations'])
+        # Domain Calibration (te)
+        print(f"Domain calibration (te) for {len(test_sentences)} test sentences") 
+        p_df_te = get_domain_probs_original(params, train_sentences, train_labels, test_sentences, 20) 
+
+        # In-Context Calibration
+        print(f"In-Context Calibration for {len(test_sentences)} test sentences")
+        p_ic = get_calibration_probs_in_context(params, train_sentences, train_labels)
+
+        # In-Context Corrupt Calibration
+        print(f"In-Context Corrupt Calibration for {len(test_sentences)} test sentences") 
+        p_icc = get_calibration_probs_in_context_corrupt_context(params, train_sentences, train_labels)
+
+        # In-Context Replace Calibration
+        print(f"In-Context Replace Calibration for {len(test_sentences)} test sentences") 
+        p_icr = get_calibration_probs_in_context_replace_context(params, train_sentences, train_labels, params['ratio'])
 
         acc_original, f1_original = eval_accuracy(all_label_probs, test_labels)
         acc_calibrated,f1_context = eval_accuracy(all_label_probs, test_labels, mode="diagonal_W", p_cf=p_cf)
-        acc_dc, f1_domain = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df) 
-        acc_neutral, f1_neutral = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df_neutral)
-        max_f1, oracle_calibration_line = eval_accuracy_with_max_cal(all_label_probs, test_labels)
+        acc_dc_tr, f1_domain_tr = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df_tr) 
+        acc_dc_te, f1_domain_te = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df_te) 
+        acc_ic, f1_ic = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_ic)
+        acc_icc, f1_icc = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_icc)
+        acc_icr, f1_icr = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_icr)
+        #max_f1, oracle_calibration_line = eval_accuracy_with_max_cal(all_label_probs, test_labels)
 
-        accuracies = [acc_original, acc_calibrated, acc_dc, acc_neutral]
-        f1_scores =[f1_original, f1_context, f1_domain, f1_neutral]
+        accuracies = [acc_original, acc_calibrated, acc_dc_tr, acc_dc_te, acc_ic, acc_icc, acc_icr]
+        f1_scores =[f1_original, f1_context, f1_domain_tr, f1_domain_te, f1_ic,  f1_icc, f1_icr]
         print(f"Accuracies: {accuracies}")
         print(f"Macro-F1: {f1_scores}")
-        print(f"Upper bound Macro-F1: {max_f1}")
+        #print(f"Upper bound Macro-F1: {max_f1}")
         print(f"Average Label Estimation Before Calibration: {np.mean(np.array(deepcopy(all_label_probs)),axis=0)}")
         print(f"p_cf      : {p_cf}")
-        print(f"p_df_origin      : {p_df}")
-        print(f"p_neutral       : {p_df_neutral}")
-        print(f"p_oracle_calibration      : {oracle_calibration_line}")
+        print(f"p_df_tr      : {p_df_tr}")
+        print(f"p_df_te     : {p_df_te}")
+        print(f"p_ic       : {p_ic}")
+        print(f"p_icc       : {p_icc}")
+        print(f"p_icc       : {p_icr}")
+        #print(f"p_oracle_calibration   : {oracle_calibration_line}")
 
         # add to result_tree
-        keys = [params['dataset'], params['model'], params['num_shots'], params['num_calibrations']]
+        keys = [params['dataset'], params['model'], params['num_shots'], params['ratio']]
         node = result_tree # root
         for k in keys:
             if not (k in node.keys()):
@@ -135,9 +183,12 @@ def save_results(params_list, freeze_test_set=True):
         result_to_save['raw_resp_test'] = raw_resp_test
         result_to_save['all_label_probs'] = all_label_probs
         result_to_save['p_cf'] = p_cf
-        result_to_save['p_df'] = p_df
-        result_to_save['p_df_neutral'] = p_df_neutral
-        result_to_save['p_df_oracle'] = oracle_calibration_line
+        result_to_save['p_df_tr'] = p_df_tr
+        result_to_save['p_df_te'] = p_df_te
+        result_to_save['p_ic'] = p_ic
+        result_to_save['p_icc'] = p_icc
+        result_to_save['p_icr'] = p_icr
+        #result_to_save['p_df_oracle'] = oracle_calibration_line
         result_to_save['accuracies'] = accuracies
         result_to_save['f1_scores'] = f1_scores
         if 'prompt_func' in result_to_save['params'].keys():
@@ -320,7 +371,10 @@ def get_label_probs(params, raw_resp, train_sentences, train_labels, test_senten
 
         assert len(all_probs) == 0, "all should be popped"
         assert (all_label_probs > 0).all(), "all should be populated with non-zero value"
-
+    
+    row_sums = np.sum(all_label_probs, axis=1)
+    row_sums = row_sums[:, np.newaxis]
+    all_label_probs = all_label_probs / row_sums
     return all_label_probs # NOT NORMALIZED
 
 def get_p_content_free(params, train_sentences, train_labels, content_free_inputs=('N/A',)):
@@ -343,13 +397,13 @@ def get_p_content_free(params, train_sentences, train_labels, content_free_input
     p_y = p_y / np.sum(p_y) # normalize
     return p_y
 
-def get_domain_probs_original(params, train_sentences, train_labels, test_sentences, num_of_calibration=20):
+def get_domain_probs_demonstration(params, train_sentences, train_labels, test_sentences, num_of_calibration=20):
     """Query model with domain free input, return its prediction probability for each label"""
     label_dict = params['label_dict']
 
     from sklearn.feature_extraction.text import CountVectorizer
     vectorizer = CountVectorizer()
-    X = vectorizer.fit_transform(test_sentences).toarray()
+    X = vectorizer.fit_transform(train_sentences).toarray() # in-domain-sampling from train_sentences
     feature_names = vectorizer.get_feature_names_out()
     average_word = int(np.round(np.average(np.sum(X, axis=-1))))
     # Get the frequency of each word
@@ -375,40 +429,26 @@ def get_domain_probs_original(params, train_sentences, train_labels, test_senten
     p_y = p_y / np.sum(p_y) # normalize
     return p_y
 
-def get_neutral_probs(params, train_sentences, train_labels, all_train_sentences, all_train_labels, context_per_class=3, num_of_calibration=20): # 
+def get_domain_probs_original(params, train_sentences, train_labels, test_sentences, num_of_calibration=20):
     """Query model with domain free input, return its prediction probability for each label"""
     label_dict = params['label_dict']
 
-    # 1. sample uniform label context from the train set
-    context_sentences = list()
-    num_of_context = len(label_dict) * int(context_per_class)
-
-    # change variable name later
-    for i in range(num_of_calibration):
-        sampled_sentence, _ =  stratify_random_sampling(all_train_sentences, all_train_labels, num_of_context)
-        context_sentences.append(" ".join(sampled_sentence))
-     
-    # 2. Generate Neutral Text (생성한 뒤의 L개 토큰만 가져오도록 코드 짜기) > complete gpt 코드 좀 수정해야할듯... 
-
-    # length 계산해주는 코드 설정하기 
     from sklearn.feature_extraction.text import CountVectorizer
     vectorizer = CountVectorizer()
-    X = vectorizer.fit_transform(train_sentences).toarray()
+    X = vectorizer.fit_transform(test_sentences).toarray() # in-domain-sampling from train_sentences
+    feature_names = vectorizer.get_feature_names_out()
     average_word = int(np.round(np.average(np.sum(X, axis=-1))))
+    # Get the frequency of each word
+    word_frequencies = np.asarray(X.sum(axis=0)).ravel()
+    # Normalize the frequencies to get probabilities
+    word_probabilities = word_frequencies / word_frequencies.sum()
+    in_domain_inputs = [" ".join(np.random.choice(feature_names, size=average_word, 
+                                                  replace=True, p=word_probabilities)) for i in range(num_of_calibration)]
+    print("original in domain input: ", in_domain_inputs)
 
-    length = len(label_dict) * average_word
-
-    neutral_corpus = []
-    for context in context_sentences:
-        #prompt = construct_prompt(params, train_sentences, train_labels, context, prefix=False)
-        neutral_corpus.append(complete(context, length, params['model'], echo=False)['choices'][0]['text'])
-
-    print("Neutral corpus: ", neutral_corpus)
-
-    # 3. Calculate Calibration Probabilbity
     all_p_y = []
-    for neutral_text in neutral_corpus:
-        prompt = construct_prompt(params, train_sentences, train_labels, neutral_text)
+    for domain_free_input in in_domain_inputs:
+        prompt = construct_prompt(params, train_sentences, train_labels, domain_free_input)
         p_y = [0] * len(label_dict)
         for i, answers in label_dict.items():
             prob = 0
@@ -416,16 +456,186 @@ def get_neutral_probs(params, train_sentences, train_labels, all_train_sentences
                 prob += np.exp(complete(prompt + " " + a, 0, params['model'], echo=True, num_log_probs=1)['choices'][0]['logprobs']['token_logprobs'][-1])
             p_y[i] = prob
         all_p_y.append(p_y)
-    
-    all_p_y = np.array(all_p_y)
-    # normalize each calibration line or not
-    # row_sums = all_p_y.sum(axis=1)
-    # all_p_y = all_p_y / row_sums[:, np.newaxis]
 
-    # 4. How to Join the Calibration Probabilities -> Average
     p_y = np.mean(np.array(all_p_y), axis=0)
     p_y = p_y / np.sum(p_y) # normalize
     return p_y
+
+def get_calibration_probs_in_context(params, train_sentences, train_labels): 
+
+    label_dict = params['label_dict']
+
+    num_shots = len(train_sentences)
+
+    all_replaced_sentences = []
+    all_replaced_labels = []    
+    
+    for i in range(num_shots):
+
+        # Extract all sentences and labels except the k-th one
+        temp_sentences_before, temp_sentences_after = train_sentences[:i], train_sentences[i+1:]
+        temp_labels_before, temp_labels_after = train_labels[:i], train_labels[i+1:]
+
+        x_k, y_k = train_sentences[i], train_labels[i]
+        replaced_sentences_list = []
+        replaced_labels_list = []
+
+        replaced_sentences_list.extend(temp_sentences_before)
+        replaced_sentences_list.extend(temp_sentences_after)
+        replaced_labels_list.extend(temp_labels_before)
+        replaced_labels_list.extend(temp_labels_after)
+
+        all_replaced_sentences.append({x_k:replaced_sentences_list})
+        all_replaced_labels.append({y_k:replaced_labels_list})
+
+
+    all_p_y = []
+    for x, y in zip(all_replaced_sentences, all_replaced_labels):
+        x_k = list(x.keys())[0] # k-th input
+        y_k = list(y.keys())[0] # k-th label
+        replaced_demonstration = x[x_k]
+        replaced_label_dist = y[y_k]
+        all_k_1_p_y = []
+        p_y = [0] * len(label_dict)
+        prompt = construct_prompt(params, replaced_demonstration, replaced_label_dist, x_k)
+        for i, answers in label_dict.items():
+            prob = 0
+            for a in answers:
+                prob += np.exp(complete(prompt + " " + a, 0, params['model'], echo=True, num_log_probs=1)['choices'][0]['logprobs']['token_logprobs'][-1])
+            p_y[i] = prob
+        all_k_1_p_y.append(p_y)
+        k_1_p_y = np.mean(np.array(all_k_1_p_y), axis=0)
+        k_1_p_y = k_1_p_y / np.sum(k_1_p_y) # normalize
+        print(f"x_k - {x_k} - y_k {y_k} individual estimate probability : {k_1_p_y}")
+        all_p_y.append(k_1_p_y)
+    
+    p_lm = np.mean(np.array(all_p_y), axis=0)
+    p_lm = p_lm / np.sum(p_lm) # normalize
+    return p_lm
+
+def get_calibration_probs_in_context_corrupt_context(params, train_sentences, train_labels): 
+
+    label_dict = params['label_dict']
+    num_shots = len(train_sentences)
+
+    all_replaced_sentences = []
+    all_replaced_labels = []    
+    
+    for i in range(num_shots):
+
+        # Extract all sentences and labels except the k-th one
+        temp_sentences_before, temp_sentences_after = train_sentences[:i], train_sentences[i+1:]
+        temp_labels_before, temp_labels_after = train_labels[:i], train_labels[i+1:]
+
+        x_k, y_k = train_sentences[i], train_labels[i]
+        replaced_sentences_list = []
+        replaced_labels_list = []
+
+        replaced_sentences_list.extend(temp_sentences_before)
+        replaced_sentences_list.extend(temp_sentences_after)
+        replaced_labels_list.extend(temp_labels_before)
+        replaced_labels_list.extend(temp_labels_after)
+
+        all_replaced_sentences.append({x_k:replaced_sentences_list})
+        all_replaced_labels.append({y_k:replaced_labels_list})
+
+
+    all_p_y = []
+    for x, y in zip(all_replaced_sentences, all_replaced_labels):
+        x_k = list(x.keys())[0] # k-th input
+        y_k = list(y.keys())[0] # k-th label
+        replaced_demonstration = x[x_k]
+        replaced_label_dist = y[y_k]
+        all_k_1_p_y = []
+        for i in range(2):
+            p_y = [0] * len(label_dict)
+            if i == 0:
+                pass
+            else:
+                x_k = x_k.split()
+                np.random.shuffle(x_k)
+                x_k = ' '.join(x_k)
+            prompt = construct_prompt(params, replaced_demonstration, replaced_label_dist, x_k)
+            for i, answers in label_dict.items():
+                prob = 0
+                for a in answers:
+                    prob += np.exp(complete(prompt + " " + a, 0, params['model'], echo=True, num_log_probs=1)['choices'][0]['logprobs']['token_logprobs'][-1])
+                p_y[i] = prob
+            all_k_1_p_y.append(p_y)
+        k_1_p_y = np.mean(np.array(all_k_1_p_y), axis=0)
+        k_1_p_y = k_1_p_y / np.sum(k_1_p_y) # normalize
+        print(f"x_k - {x_k} - y_k {y_k} individual estimate probability : {k_1_p_y}")
+        all_p_y.append(k_1_p_y)
+    
+    p_lm = np.mean(np.array(all_p_y), axis=0)
+    p_lm = p_lm / np.sum(p_lm) # normalize
+    return p_lm
+
+def get_calibration_probs_in_context_replace_context(params, train_sentences, train_labels, replace_ratio=0.5): 
+
+    label_dict = params['label_dict']
+    num_shots = len(train_sentences)
+
+    from sklearn.feature_extraction.text import CountVectorizer
+    vectorizer = CountVectorizer()
+    X = vectorizer.fit_transform(train_sentences).toarray() 
+    feature_names = vectorizer.get_feature_names_out()
+
+    # Get the frequency of each word
+    word_frequencies = np.asarray(X.sum(axis=0)).ravel()
+    # Normalize the frequencies to get probabilities
+    word_probabilities = word_frequencies / word_frequencies.sum()
+
+    all_replaced_sentences = []
+    all_replaced_labels = []    
+    
+    for i in range(num_shots):
+
+        # Extract all sentences and labels except the k-th one
+        temp_sentences_before, temp_sentences_after = train_sentences[:i], train_sentences[i+1:]
+        temp_labels_before, temp_labels_after = train_labels[:i], train_labels[i+1:]
+
+        x_k, y_k = train_sentences[i], train_labels[i]
+        replaced_sentences_list = []
+        replaced_labels_list = []
+
+        replaced_sentences_list.extend(temp_sentences_before)
+        replaced_sentences_list.extend(temp_sentences_after)
+        replaced_labels_list.extend(temp_labels_before)
+        replaced_labels_list.extend(temp_labels_after)
+
+        all_replaced_sentences.append({x_k:replaced_sentences_list})
+        all_replaced_labels.append({y_k:replaced_labels_list})
+
+
+    all_p_y = []
+    for x, y in zip(all_replaced_sentences, all_replaced_labels):
+        x_k = list(x.keys())[0] # k-th input
+        y_k = list(y.keys())[0] # k-th label
+        replaced_demonstration = x[x_k]
+        replaced_label_dist = y[y_k]
+        all_k_1_p_y = []
+        for i in range(2):
+            p_y = [0] * len(label_dict)
+            if i == 0:
+                pass
+            else:
+                x_k = replace_words(x_k, feature_names, word_probabilities, replace_ratio)
+            prompt = construct_prompt(params, replaced_demonstration, replaced_label_dist, x_k)
+            for i, answers in label_dict.items():
+                prob = 0
+                for a in answers:
+                    prob += np.exp(complete(prompt + " " + a, 0, params['model'], echo=True, num_log_probs=1)['choices'][0]['logprobs']['token_logprobs'][-1])
+                p_y[i] = prob
+            all_k_1_p_y.append(p_y)
+        k_1_p_y = np.mean(np.array(all_k_1_p_y), axis=0)
+        k_1_p_y = k_1_p_y / np.sum(k_1_p_y) # normalize
+        print(f"x_k - {x_k} - y_k {y_k} individual estimate probability : {k_1_p_y}")
+        all_p_y.append(k_1_p_y)
+    
+    p_lm = np.mean(np.array(all_p_y), axis=0)
+    p_lm = p_lm / np.sum(p_lm) # normalize
+    return p_lm
 
 def params_check(params):
     """sanity check the experiment params"""
@@ -438,11 +648,71 @@ def params_check(params):
                 print('label name is more than 1 token', label_name)
                 assert False
 
-    if not (params['dataset'] in ['cb', 'rte']):
+    if not (params['dataset'] in ['cb', 'rte', 'wnli', 'anli', 'mnli', 'sick']):
         # formatting: there should be a space after question/answer prefix
         assert params["q_prefix"][-1] == " "
         assert params["a_prefix"][-1] == " "
         assert len(params["prompt_prefix"]) == 0 or params["prompt_prefix"][-2:] == '\n\n'
+
+def average_token_length(test_sentences: List[str], language_model_tokenizer) -> int:
+    avg_list = list()
+
+    for sentence in test_sentences:
+        tokens = language_model_tokenizer.tokenize(sentence)
+        avg_list.append(len(tokens))
+
+    return int(np.mean(avg_list))
+
+def generate_task_learning_dicts(n, symbols=None):
+    # symbols will be ['A', 'B', 'C'] or ['0', '1', '2']
+    if symbols is None:
+        symbols = [str(i) for i in range(0, n)]
+
+    if len(symbols) < n:
+        raise ValueError("Not enough symbols for the desired length.")
+
+    label_dict = {}
+    inv_label_dict = {}
+
+    for i in range(n):
+        label_dict[i] = [symbols[i]]
+        inv_label_dict[symbols[i]] = i
+
+    return label_dict, inv_label_dict
+
+def randomly_concatenate(*args):
+    concatenated_list = []
+    
+    for lst in args:
+        concatenated_list.extend([lst])
+        
+    np.random.shuffle(concatenated_list)
+    
+    return concatenated_list
+
+def replace_words(sentence, feature_names, word_probabilities, percentage=0.2):
+    words = sentence.split()
+    total_words = len(words)
+    num_to_replace = int(total_words * percentage)
+
+    # Randomly choose indices to replace
+    indices_to_replace = np.random.choice(range(total_words), size=num_to_replace, replace=False)
+
+    # Randomly choose words based on word_probabilities
+    replacement_words = np.random.choice(feature_names, size=num_to_replace, replace=True, p=word_probabilities)
+
+    # Replace words at the chosen indices
+    for i, new_word in zip(indices_to_replace, replacement_words):
+        words[i] = new_word
+
+    return " ".join(words)
+
+def count_and_ratio_numbers(lst):
+    unique_numbers, counts = np.unique(lst, return_counts=True)
+    count_dict = dict(zip(unique_numbers, counts))
+    total_count = len(lst)
+    ratio_dict = {num: count / total_count for num, count in count_dict.items()}
+    return count_dict, ratio_dict
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -463,10 +733,12 @@ if __name__ == '__main__':
                         help='whether to load the results from pickle files and not run the model')
     parser.add_argument('--approx', dest='approx', action='store_const', const=True, default=False,
                         help='whether to set token prob to zero if not in top 100')
-    parser.add_argument('--num_contexts', dest='num_contexts', action='store', required=True, help='number of context for each class')
-    parser.add_argument('--num_of_calibration', dest='num_of_calibration', action='store', required=True, help='number of calibration lines > this is for ablation study.')
-    
-
+    #parser.add_argument('--num_of_permutations', dest='num_of_permutations', action='store', required=True, help='number of permutations > this is for ablation study.')
+    parser.add_argument('--replace_ratio', dest='replace_ratio', action='store', required=True, help='replace_ratio > this is for ablation study.')
+    parser.add_argument('--do_task_learning', dest='do_task_learning', action='store_const', const=True, default=False,
+                        help='whether to perform task learning')
+    parser.add_argument('--perform_chaining_effect', dest='perform_chaining_effect', action='store_const', const=True, default=False,
+                        help='whether to perform chaining_effect experiment')
     args = parser.parse_args()
     args = vars(args)
 
@@ -476,10 +748,17 @@ if __name__ == '__main__':
             return [int(s.strip()) for s in items.split(",")]
         else:
             return [s.strip() for s in items.split(",")]
+    
+    # simple processing
+    def convert_to_floatlist(items, is_int=False):
+        if is_int:
+            return [int(s.strip()) for s in items.split(",")]
+        else:
+            return [float(s.strip()) for s in items.split(",")]
 
     args['models'] = convert_to_list(args['models'])
     args['datasets'] = convert_to_list(args['datasets'])
     args['all_shots'] = convert_to_list(args['all_shots'], is_int=True)
-    args['num_of_calibration'] = convert_to_list(args['num_of_calibration'], is_int=True)
+    args['replace_ratio'] = convert_to_floatlist(args['replace_ratio']) 
 
     main(**args)

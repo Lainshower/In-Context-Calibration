@@ -14,7 +14,7 @@ device = 'cuda'
 tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
 
 ROOT_DIR = os.path.dirname(os.path.realpath(__file__))
-SAVE_DIR = os.path.join(ROOT_DIR, 'saved_results_transfer')
+SAVE_DIR = os.path.join(ROOT_DIR, 'saved_results')
 if not os.path.isdir(SAVE_DIR):
     os.mkdir(SAVE_DIR)
     print(f"mkdir at {SAVE_DIR} for saving results")
@@ -37,7 +37,7 @@ def chunk_size_helper(params):
     else:
         return bs
 
-def random_sampling(sentences, labels, num):
+def random_sampling(sentences, labels, num, seed):
     """randomly sample subset of the training pairs"""
     assert len(sentences) == len(labels)
     # if num > len(labels):
@@ -45,10 +45,78 @@ def random_sampling(sentences, labels, num):
     if num > len(labels):
         print(f"Warning: you tried to randomly sample {num}, which is more than the total size of the pool {len(labels)}. Setting num to {len(labels)} instead.")
         num = len(labels)
+    np.random.seed(seed=seed)
     idxs = np.random.choice(len(labels), size=num, replace=False)
     selected_sentences = [sentences[i] for i in idxs]
     selected_labels = [labels[i] for i in idxs]
     return deepcopy(selected_sentences), deepcopy(selected_labels)
+
+'''
+Sampling Function for Chaining Experiments
+'''
+
+def random_sampling_by_label(sentences, labels, num, seed, params):
+    """randomly sample subset of the training pairs for a randomly chosen label"""
+    assert 'label_dict' in params, "params should contain a 'label_dict' key"
+    
+    # Randomly select one unique label from params['label_dict']
+    unique_labels = list(params['label_dict'].keys())
+    np.random.seed(seed=seed)
+    chosen_label = np.random.choice(unique_labels)
+    
+    # Extract sentences corresponding to the chosen label
+    label_specific_sentences = deepcopy([sent for idx, sent in enumerate(sentences) if labels[idx] == chosen_label])
+    label_specific_labels = deepcopy([chosen_label for _ in range(len(label_specific_sentences))])
+
+    sampled_sentences, sampled_labels = random_sampling(label_specific_sentences, label_specific_labels, num, seed)
+    return sampled_sentences, sampled_labels, chosen_label  # Also return the chosen label
+
+from rank_bm25 import BM25Okapi
+
+def whitespace_tokenizer(text):
+    return text.lower().split() 
+
+def bm25_rank(test_sentences, train_sentences):
+    """Rank test sentences based on BM25 score relative to train_sentences and return the sorted indices."""
+    bm25 = BM25Okapi(train_sentences, tokenizer=whitespace_tokenizer)
+    combined_scores = [0] * len(test_sentences)
+    
+    # Compute the BM25 score for every sentence in the test_sentences using the train_sentences as reference
+    for test_sentence in test_sentences:
+        scores = bm25.get_scores(whitespace_tokenizer(test_sentence))
+        combined_scores[test_sentences.index(test_sentence)] = sum(scores)
+
+    # Sort the indices of the test_sentences in accordance with their BM25 scores
+    sorted_indices = sorted(range(len(combined_scores)), key=lambda i: combined_scores[i], reverse=True)
+    
+    assert len(sorted_indices) == len(test_sentences), "Length mismatch between sorted indices and test sentences"
+    
+    return sorted_indices
+
+def random_sampling_exclude_label(sentences, labels, num, excluded_label, params, train_sentences):
+    """randomly sample hardest negative subset of the test sentences excluding a specific label"""
+    
+    # Extract sentences NOT corresponding to the excluded label
+    non_excluded_sentences = [sent for idx, sent in enumerate(sentences) if labels[idx] != excluded_label]
+    non_excluded_labels = [lbl for idx, lbl in enumerate(labels) if lbl != excluded_label]
+
+    sampling_upper_limits = int(0.3*len(non_excluded_labels))
+
+    if num > sampling_upper_limits:
+        print(f"Warning: you tried to randomly sample {num}, which is more than the total size of the pool {sampling_upper_limits}. Setting num to {sampling_upper_limits} instead.")
+        num = sampling_upper_limits
+    
+    # Use BM25 to rank the sentences based on train sentences
+    sorted_indices = bm25_rank(non_excluded_sentences, train_sentences)
+    
+    # Get the hardest negatives based on the provided `num` value
+    hardest_negative_sentences = [non_excluded_sentences[i] for i in sorted_indices[:num]]
+    hardest_negative_labels = [non_excluded_labels[i] for i in sorted_indices[:num]]
+
+    assert excluded_label not in hardest_negative_labels, f"{excluded_label} is in hard negatives"
+
+    return hardest_negative_sentences, hardest_negative_labels
+
 
 def stratify_random_sampling(sentences, labels, num):
     """randomly sample subset of the training pairs"""
@@ -80,33 +148,35 @@ def stratify_random_sampling(sentences, labels, num):
     
     return selected_sentences, selected_labels  #[joonwon] return 받은 sentence shuffle해서 사용.
 
-gpt_model = None
-gpt_tokenzier = None
+langauge_model = None
+language_model_tokenizer = None
 def setup_gpt2(model_name):
     # load the GPT-2 model
-    global gpt_model
-    global gpt_tokenzier
-    if gpt_model is None:
-        print("Setting up GPT model")
-        assert model_name in ["EleutherAI/gpt-neo-125m", "EleutherAI/gpt-neo-1.3B", "EleutherAI/gpt-neo-2.7B", "EleutherAI/gpt-j-6b"]
-        if model_name in ["EleutherAI/gpt-neo-125m", "EleutherAI/gpt-neo-1.3B", "EleutherAI/gpt-neo-2.7B"]:
-            gpt_model = AutoModelForCausalLM.from_pretrained(model_name)
-            gpt_model.eval().to(device)
-        elif model_name == "EleutherAI/gpt-j-6b":
-            checkpoint = "EleutherAI/gpt-j-6b"
+    global langauge_model
+    global language_model_tokenizer
+    if langauge_model is None:
+        print("Setting up language model")
+        assert model_name in ["EleutherAI/gpt-neo-2.7B", "EleutherAI/gpt-j-6b"]
+        # size = model_name.lower.split('-')
+        # size에서 숫자 걸러내야 하지 않음,,,? 
+        if model_name in ["EleutherAI/gpt-neo-2.7B"]:
+            langauge_model = AutoModelForCausalLM.from_pretrained(model_name)
+            langauge_model.eval().to(device)
+        elif model_name in ["EleutherAI/gpt-j-6b"]:
+            checkpoint = model_name
             config = AutoConfig.from_pretrained(checkpoint)
             with init_empty_weights():
-                gpt_model = AutoModelForCausalLM.from_config(config)
-            gpt_model.tie_weights()
-            gpt_model = load_checkpoint_and_dispatch(
-            gpt_model, "sharded-gpt-j-6B", device_map="auto", no_split_module_classes=["GPTJBlock"]
+                langauge_model = AutoModelForCausalLM.from_config(config)
+            langauge_model.tie_weights()
+            langauge_model = load_checkpoint_and_dispatch(
+            langauge_model, "sharded-"+ model_name.split('/')[-1], device_map="auto", no_split_module_classes=["GPTJBlock"]
             )
         
-        gpt_tokenzier = AutoTokenizer.from_pretrained(model_name)
+        language_model_tokenizer = AutoTokenizer.from_pretrained(model_name)
         # to batch generation, we pad on the left and mask those positions out.
-        gpt_tokenzier.padding_side = "left"
-        gpt_tokenzier.pad_token = gpt_tokenzier.eos_token
-        gpt_model.config.pad_token_id = gpt_model.config.eos_token_id
+        language_model_tokenizer.padding_side = "left"
+        language_model_tokenizer.pad_token = language_model_tokenizer.eos_token
+        langauge_model.config.pad_token_id = langauge_model.config.eos_token_id
         print("Finished")
 
 def setup_gpt3():
@@ -120,13 +190,13 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
      provided by the OpenAI API. '''
     if isinstance(prompt, str):
         prompt = [prompt] # the code below assumes a list
-    input_ids = gpt_tokenzier.batch_encode_plus(prompt, return_tensors="pt", padding=True)
+    input_ids = language_model_tokenizer.batch_encode_plus(prompt, return_tensors="pt", padding=True)
     
     # greedily generate l tokens
     if l > 0:
         # the generate function can handle left padded inputs automatically in HF
         # total_sequences is now the input + possible generated output
-        total_sequences = gpt_model.generate(input_ids=input_ids['input_ids'].cuda(), attention_mask=input_ids['attention_mask'].cuda(), max_length=l + len(input_ids['input_ids'][0]), do_sample=False)
+        total_sequences = langauge_model.generate(input_ids=input_ids['input_ids'].cuda(), attention_mask=input_ids['attention_mask'].cuda(), max_length=l + len(input_ids['input_ids'][0]), do_sample=False) # repetition_penalty=1.85, no_repeat_ngram_size=3
     else:
         assert echo == True and l == 0
         total_sequences = input_ids['input_ids'].cuda()
@@ -138,7 +208,7 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
         position_ids = attention_mask.long().cumsum(-1) - 1
         position_ids.masked_fill_(attention_mask == 0, 1)
         # get the logits for the context and the next l tokens
-        logits = gpt_model.forward(input_ids=total_sequences, attention_mask=attention_mask, position_ids=position_ids, return_dict=True).logits.detach().cpu()
+        logits = langauge_model.forward(input_ids=total_sequences, attention_mask=attention_mask, position_ids=position_ids, return_dict=True).logits.detach().cpu()
         if not echo:
             # get the top tokens and probs for the generated l tokens
             probs = torch.softmax(logits[:,-l-1:], dim=2).cpu()
@@ -156,9 +226,9 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
         curr_json = {}
         # text is just the optional context and next l tokens
         if not echo:
-            curr_json['text'] = gpt_tokenzier.decode(total_sequences[batch_id][-l:], skip_special_tokens=True)
+            curr_json['text'] = language_model_tokenizer.decode(total_sequences[batch_id][-l:], skip_special_tokens=True)
         else:
-            curr_json['text'] = gpt_tokenzier.decode(total_sequences[batch_id], skip_special_tokens=True)
+            curr_json['text'] = language_model_tokenizer.decode(total_sequences[batch_id], skip_special_tokens=True)
 
         # fill the return json with the top tokens and probs to match the OpenAI return value.
         if num_log_probs is not None:
@@ -170,13 +240,13 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
                 # cutoff the -1 here because the probs are shifted one over for LMs
                 for current_element_top_log_probs, current_element_top_tokens in zip(top_log_probs[batch_id][:-1], top_tokens[batch_id][:-1]):
                     # tokens is a list of the top token at each position
-                    curr_json['logprobs']['tokens'].append(gpt_tokenzier.decode([current_element_top_tokens[0]]))
+                    curr_json['logprobs']['tokens'].append(language_model_tokenizer.decode([current_element_top_tokens[0]]))
                     # token_logprobs is a list of the logprob of the top token at each position
                     curr_json['logprobs']['token_logprobs'].append(current_element_top_log_probs[0].item())
                     # top_logprobs is a list of dicts for the top K tokens. with each entry being {'token_name': log_prob}
                     temp = {}
                     for log_prob, token in zip(current_element_top_log_probs, current_element_top_tokens):
-                        temp[gpt_tokenzier.decode(token.item())] = log_prob.item()
+                        temp[language_model_tokenizer.decode(token.item())] = log_prob.item()
                     curr_json['logprobs']['top_logprobs'].append(temp)
             else:
                 # same as not above but small tweaks
@@ -190,10 +260,10 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
                         continue
                     temp = {}
                     for log_prob, token in zip(current_element_top_log_probs, current_element_top_tokens):
-                        temp[gpt_tokenzier.decode(token.item())] = log_prob.item()
+                        temp[language_model_tokenizer.decode(token.item())] = log_prob.item()
                     curr_json['logprobs']['top_logprobs'].append(temp)
                 for index in range(len(probs[batch_id])):
-                    curr_json['logprobs']['tokens'].append(gpt_tokenzier.decode([total_sequences[batch_id][index]]))
+                    curr_json['logprobs']['tokens'].append(language_model_tokenizer.decode([total_sequences[batch_id][index]]))
                 curr_json['logprobs']['token_logprobs'].append('null')
                 for index, log_probs_token_position_j in enumerate(logprobs[batch_id][:-1]):
                     # probs are left shifted for LMs 
@@ -226,7 +296,7 @@ def complete(prompt, l, model, temp=0, num_log_probs=None, echo=False, n=None):
     """complete the prompt using a language model"""
     assert l >= 0
     assert temp >= 0
-    if 'gpt' in model:
+    if 'gpt3' not  in model:
         assert n == None # unsupported at the moment
         assert temp == 0 # unsupported at the moment
         setup_gpt2(model)
@@ -251,6 +321,45 @@ def construct_prompt(params, train_sentences, train_labels, test_sentence, prefi
         q_prefix = params["q_prefix"]
         a_prefix = params["a_prefix"]
     for s, l in zip(train_sentences, train_labels):
+        prompt += q_prefix
+        prompt += s + "\n"
+        if isinstance(l, int) or isinstance(l, np.int32) or isinstance(l, np.int64): # integer labels for classification
+            assert params['task_format'] == 'classification'
+            l_str = params["label_dict"][l][0] if isinstance(params["label_dict"][l], list) else params["label_dict"][l]
+        else:
+            assert isinstance(l, str) # string labels
+            assert params['task_format'] == 'qa'
+            l_str = l
+
+        prompt += a_prefix
+        prompt += l_str + "\n\n"
+
+    prompt += q_prefix
+    prompt += test_sentence + "\n"
+    assert a_prefix[-1] == ' '
+    prompt += a_prefix[:-1] # GPT models do not want a trailing space, so we cut off -1
+    return prompt
+
+def construct_prompt_with_domain(params, train_sentences, train_labels, test_sentence, domain, prefix=True):
+
+    """construct a single prompt to be fed into the model"""
+    # special case when the user defines a custom prompt function. 
+    if ('prompt_func' in params.keys()) and (params['prompt_func'] is not None):
+        return params['prompt_func'](params, train_sentences, train_labels, test_sentence)
+
+    # take the prompt template and fill in the training and test example
+    if not prefix:
+        prompt = ''
+        q_prefix = ''
+        a_prefix = ' '
+    else:
+        prompt = params["prompt_prefix"] # instruction
+        q_prefix = params["q_prefix"]
+        a_prefix = params["a_prefix"]
+    position = np.random.randint(0,len(train_sentences))
+    for index, (s, l) in enumerate(zip(train_sentences, train_labels)):
+        if index == position:
+            prompt += domain
         prompt += q_prefix
         prompt += s + "\n"
         if isinstance(l, int) or isinstance(l, np.int32) or isinstance(l, np.int64): # integer labels for classification
@@ -328,7 +437,7 @@ def save_pickle(params, data):
     print(f"Saved to {file_name}")
     return data
 
-def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain Calibrated F1', 'Neutral Context Calibrated F1')):
+def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain Calibrated (Demonstration) F1', 'Domain Calibrated (Test set) F1', 'In-Context Calibrated F1',  'In-Context Corrupt Context Calibrated F1', 'In-Context Replace Context Calibrated F1')):
     # print out all results
     root = deepcopy(tree)
     for dataset in root.keys():
@@ -338,15 +447,15 @@ def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain 
             print(f"\nModel: {model}")
             num_shots_node = models_node[model]
             for num_shots in num_shots_node.keys():
-                num_calibration_line_node = num_shots_node[num_shots]
-                for line in num_calibration_line_node.keys():
-                    f1_score = np.array(list(num_calibration_line_node[line].values()))
+                num_ratio_node = num_shots_node[num_shots]
+                for ratio in num_ratio_node.keys():
+                    f1_score = np.array(list(num_ratio_node[ratio].values()))
                     f1_score_mean = np.mean(f1_score, axis=0)
                     f1_score_low = np.min(f1_score, axis=0)
                     f1_score_high = np.max(f1_score, axis=0)
                     f1_score_std = np.std(f1_score, axis=0)
 
-                    print(f"\n{num_shots}-shot, {line}-lines, {len(f1_score)} seeds")
+                    print(f"\n{num_shots}-shot, {ratio}-%, {len(f1_score)} seeds")
                     for i, (m, l, h, s) in enumerate(zip(f1_score_mean, f1_score_low, f1_score_high, f1_score_std)):
                         print(f"{names[i]} | Mean: {m:.4f}, Low: {l:.4f}, High: {h:.4f}, Std: {s:.4f}")
 

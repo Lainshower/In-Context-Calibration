@@ -161,7 +161,7 @@ def load_subj():
 def load_civil_comments():
     train_sentences = []
     train_answers = []
-    with open("./data/civil_comments/train.jsonl", "r") as f:
+    with open("./data/civil-comments/train.jsonl", "r") as f:
         for line in f:
             myjson = json.loads(line)
             train_sentences.append(myjson['Text'])
@@ -174,7 +174,7 @@ def load_civil_comments():
 
     test_sentences = []
     test_answers = []
-    with open("./data/civil_comments/test.jsonl", "r") as f:
+    with open("./data/civil-comments/test.jsonl", "r") as f:
         for line in f:
             myjson = json.loads(line)
             test_sentences.append(myjson['Text'])
@@ -258,7 +258,7 @@ def get_cb():
             elif curr_label == 'entailment':
                 train_answers.append(2)
             # being a bit lazy here. We put the "question: " into the input and treat it like single sentence classification.
-            train_questions.append(p.strip() + '\n' + 'question: ' + q + '. true, false, or neither?')
+            train_questions.append(p.strip() + ' question: ' + q + '. true, false, or neither?')
 
     test_questions = []
     test_answers = []
@@ -275,7 +275,7 @@ def get_cb():
                 test_answers.append(2)
             else:
                 exit('answer')
-            test_questions.append(p.strip() + '\n' + 'question: ' + q + '. true, false, or neither?')
+            test_questions.append(p.strip() + ' question: ' + q + '. true, false, or neither?')
 
     return train_questions, train_answers, test_questions, test_answers
 
@@ -453,7 +453,7 @@ def load_rte():
                 train_answers.append(1)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            train_questions.append(p + ' question: ' + q + ' True or False?')
 
     test_questions = []
     test_answers = []
@@ -468,7 +468,7 @@ def load_rte():
                 test_answers.append(1)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            test_questions.append(p + ' question: ' + q + ' True or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
@@ -486,7 +486,7 @@ def load_wnli():
                 train_answers.append(1)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            train_questions.append(p + ' question: ' + q + ' True or False?')
 
     test_questions = []
     test_answers = []
@@ -501,7 +501,44 @@ def load_wnli():
                 test_answers.append(1)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            test_questions.append(p + ' question: ' + q + ' True or False?')
+
+    return train_questions, train_answers, test_questions, test_answers
+
+def load_anli():
+    train_questions = []
+    train_answers = []
+    with open("data/anli/train.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'entailment':
+                train_answers.append(0)
+            elif myjson['label'] == 'neutral':
+                train_answers.append(1)
+            elif myjson['label'] == 'contradiction':
+                train_answers.append(2)
+            else:
+                exit('answer')
+            train_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
+
+    test_questions = []
+    test_answers = []
+    with open("data/anli/test.jsonl", "r") as f:
+        for line in f:
+            myjson = json.loads(line)
+            q = myjson['hypothesis']
+            p = myjson['premise']
+            if myjson['label'] == 'entailment':
+                test_answers.append(0)
+            elif myjson['label'] == 'neutral':
+                test_answers.append(1)
+            elif myjson['label'] == 'contradiction':
+                test_answers.append(2)
+            else:
+                exit('answer')
+            test_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
@@ -521,7 +558,7 @@ def load_esnli():
                 train_answers.append(2)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+            train_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
 
     test_questions = []
     test_answers = []
@@ -538,7 +575,7 @@ def load_esnli():
                 test_answers.append(2)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+            test_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
@@ -556,7 +593,7 @@ def load_mnli():
                 train_answers.append(1)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            train_questions.append(p + ' question: ' + q + ' True or False?')
 
     test_questions = []
     test_answers = []
@@ -571,7 +608,7 @@ def load_mnli():
                 test_answers.append(1)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' True or False?')
+            test_questions.append(p + ' question: ' + q + ' True or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
@@ -591,7 +628,7 @@ def load_sick():
                 train_answers.append(2)
             else:
                 exit('answer')
-            train_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+            train_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
 
     test_questions = []
     test_answers = []
@@ -608,14 +645,14 @@ def load_sick():
                 test_answers.append(2)
             else:
                 exit('answer')
-            test_questions.append(p + '\n' + 'question: ' + q + ' True or Neutral or False?')
+            test_questions.append(p + ' question: ' + q + ' True or Neutral or False?')
 
     return train_questions, train_answers, test_questions, test_answers
 
 def load_gutenberg_time():
     train_sentences = []
     train_answers = []
-    with open("./data/gutenberg_time/train.jsonl", "r") as f:
+    with open("./data/gutenberg-time/train.jsonl", "r") as f:
         for line in f:
             myjson = json.loads(line)
             train_sentences.append(myjson['Text'])
@@ -672,7 +709,7 @@ def load_gutenberg_time():
                 
     test_sentences = []
     test_answers = []
-    with open("./data/gutenberg_time/test.jsonl", "r") as f:
+    with open("./data/gutenberg-time/test.jsonl", "r") as f:
         for line in f:
             myjson = json.loads(line)
             train_sentences.append(myjson['Text'])
@@ -1213,7 +1250,7 @@ def load_dataset(params):
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
     
-    elif params['dataset'] == 'civil_comments':
+    elif params['dataset'] == 'civil-comments':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_civil_comments()
         params['prompt_prefix'] = ""
         params["q_prefix"] = "Text: "
@@ -1272,6 +1309,16 @@ def load_dataset(params):
         params['label_dict'] = {0: ['False'], 1: ['True']}
         params['inv_label_dict'] = {'False': 0, 'True': 1}
         params['num_user_input'] = 2
+        params['task_format'] = 'classification'
+        params['num_tokens_to_predict'] = 1
+    
+    elif params['dataset'] == 'anli':
+        orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_anli()
+        params['prompt_prefix'] = ""
+        params["q_prefix"] = " "
+        params["a_prefix"] = "answer: "
+        params['label_dict'] = {0: ['True'], 1: ['neutral'], 2: ['False']}
+        params['inv_label_dict'] = {'True': 0, 'neutral': 1, 'False': 2}
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
     
@@ -1396,7 +1443,7 @@ def load_dataset(params):
         params['task_format'] = 'classification'
         params['num_tokens_to_predict'] = 1
     
-    elif params['dataset'] == 'gutenbert_time':
+    elif params['dataset'] == 'gutenberg-time':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_gutenberg_time()
         params['prompt_prefix'] = ""
         params["q_prefix"] = "Text: "
