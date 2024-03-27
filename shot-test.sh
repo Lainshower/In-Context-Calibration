@@ -4,9 +4,9 @@ do
     python run_classification.py \
     --model "EleutherAI/gpt-j-6b" \
     --dataset $dataset \
-    --num_seeds 1 \
-    --all_shots 2 \
-    --subsample_test_set 10 \
+    --num_seeds 5 \
+    --all_shots 8 \
+    --subsample_test_set 500 \
     --approx \
     --lambda1 0.5 \
 done
