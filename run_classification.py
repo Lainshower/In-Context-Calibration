@@ -44,13 +44,9 @@ def main(models, datasets, all_shots, num_seeds, subsample_test_set, lambda1, ap
     if use_saved_results:
         load_results(all_params)
     else:
-        # For Shuffling
-        #log_dir = f"./log_{get_model_name(p['model'])}-{p['lambda1']}-{p['shuffle']}-do_task_learning-{do_task_learning}"
         log_dir = f"./log_{get_model_name(p['model'])}-{p['lambda1']}-{do_task_learning}"
         if not os.path.isdir(log_dir):
             os.makedirs(log_dir)
-        # For Shuffling
-        # log_file = f"./log_{get_model_name(p['model'])}-{p['lambda1']}-{p['shuffle']}-do_task_learning-{do_task_learning}/{p['dataset']}"
         log_file = f"./log_{get_model_name(p['model'])}-{p['lambda1']}-{do_task_learning}/{p['dataset']}"
         logger = PrintLogger(log_file)
         sys.stdout = logger
@@ -88,9 +84,7 @@ def save_results(params_list, freeze_test_set=False):
                 np.random.seed(0) # always use seed 0 result if freeze
             else:
                 np.random.seed(params['seed'])
-                # test_sentences, test_labels = random_sampling(sentences=all_test_sentences, labels=all_test_labels, num=params['subsample_test_set'], seed=params['seed'])
-                # For test set uniform sampling
-                test_sentences, test_labels = stratify_random_sampling(sentences=all_test_sentences, labels=all_test_labels, num=params['subsample_test_set'])
+                test_sentences, test_labels = random_sampling(sentences=all_test_sentences, labels=all_test_labels, num=params['subsample_test_set'], seed=params['seed'])
                 print(f"selecting {len(test_labels)} subsample of test set")
 
         ### if do_task_learning, modifiy label_dict and inv_label_dict
@@ -109,7 +103,6 @@ def save_results(params_list, freeze_test_set=False):
         all_label_probs = get_label_probs(params, raw_resp_test, train_sentences, train_labels, test_sentences)
 
         ### Contextual Calibration
-
         print(f"contextual calibration for {len(test_sentences)} test sentences")
         content_free_inputs = ["N/A"]
 
@@ -133,7 +126,6 @@ def save_results(params_list, freeze_test_set=False):
         acc_dc_tr, f1_domain_tr = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df_tr) 
         acc_dc_te, f1_domain_te = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_df_te) 
         acc_icc, f1_icc = eval_accuracy(all_label_probs, test_labels, mode=None, p_cf=None, p_df=p_icc)
-        #max_f1, oracle_calibration_line = eval_accuracy_with_max_cal(all_label_probs, test_labels)
 
         accuracies = [acc_original, acc_calibrated, acc_dc_tr, acc_dc_te, acc_icc]
         f1_scores =[f1_original, f1_context, f1_domain_tr, f1_domain_te, f1_icc]

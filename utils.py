@@ -204,11 +204,11 @@ def complete_gpt2(prompt, l=10, model_name='gpt2-xl', num_log_probs=None, echo=F
     # they want the probs of the top tokens
     if num_log_probs is not None:
         # we are left padding, so we need to adjust the position IDs
-        attention_mask = (total_sequences != 50256).float()
+        attention_mask = (total_sequences != language_model_tokenizer.pad_token_id).float()
         position_ids = attention_mask.long().cumsum(-1) - 1
         position_ids.masked_fill_(attention_mask == 0, 1)
         # get the logits for the context and the next l tokens
-        logits = langauge_model.forward(input_ids=total_sequences, attention_mask=attention_mask, position_ids=position_ids, return_dict=True).logits.detach().cpu()
+        logits = langauge_model.forward(input_ids=total_sequences, attention_mask=attention_mask, position_ids=position_ids, return_dict=True).logits.detach().cpu() # You should task care for positional embedding for other models.
         if not echo:
             # get the top tokens and probs for the generated l tokens
             probs = torch.softmax(logits[:,-l-1:], dim=2).cpu()
@@ -437,7 +437,7 @@ def save_pickle(params, data):
     print(f"Saved to {file_name}")
     return data
 
-def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain Calibrated (Demonstration) F1', 'Domain Calibrated (Test set) F1', 'In-Context Calibrated F1',  'In-Context Corrupt Context Calibrated F1', 'In-Context Replace Context Calibrated F1')):
+def print_results(tree, names=('Original F1  ','Context Calibrated F1', 'Domain Calibrated (Demonstration) F1', 'Domain Calibrated (Test set) F1', 'In-Context Calibrated F1')):
     # print out all results
     root = deepcopy(tree)
     for dataset in root.keys():

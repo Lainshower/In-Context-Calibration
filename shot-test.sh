@@ -8,5 +8,5 @@ do
     --all_shots 8 \
     --subsample_test_set 500 \
     --approx \
-    --lambda1 0.5 \
+    --lambda1 0.5 
 done
