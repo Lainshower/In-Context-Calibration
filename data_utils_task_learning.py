@@ -278,7 +278,6 @@ def get_cb():
             test_questions.append(p.strip() + ' question: ' + q + '. true, false, or neither?')
 
     return train_questions, train_answers, test_questions, test_answers
-    
 
 def load_slot_movies(field_name):
     all_fields = ["Actor", "Award", "Character_Name", "Director", "Genre", "Opinion", "Origin", "Plot", "Quote", "Relationship", "Soundtrack", "Year"]
@@ -1197,7 +1196,7 @@ def load_dataset(params):
 
     elif params['dataset'] == 'agnews':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_agnews()
-        params['prompt_prefix'] = "Classify the news articles into the categories of World, Sports, Business, and Technology.\n\n" #"Classify the news articles into the categories of World, Sports, Business, and Technology.\n\n"
+        params['prompt_prefix'] = "Classify the news articles into the categories of 0, 1, 2, and 3.\n\n" #"Classify the news articles into the categories of World, Sports, Business, and Technology.\n\n"
         params["q_prefix"] = "Article: "
         params["a_prefix"] = "Answer: "
         params['label_dict'] = {0: ['World'], 1: ['Sports'], 2: ['Business'], 3: ['Technology', 'Science']}
@@ -1207,7 +1206,7 @@ def load_dataset(params):
 
     elif params['dataset'] == 'trec':
         orig_train_sentences, orig_train_labels, orig_test_sentences, orig_test_labels = load_trec()
-        params['prompt_prefix'] = "Classify the questions based on whether their answer type is a Number, Location, Person, Description, Entity, or Ab.\n\n"
+        params['prompt_prefix'] = "Classify the questions based on whether their answer type is a 0, 1, 2, 3, 4, or 5.\n\n"
         params["q_prefix"] = "Question: "
         params["a_prefix"] = "Answer Type: "
         params['label_dict'] = {0: ['Number'], 1: ['Location'], 2: ['Person'], 3: ['Description'], 4: ['Entity'], 5: ['Ab']}

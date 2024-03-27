@@ -1,1 +1,5 @@
-data/
+./data
+./__pycache__
+./data.txt
+./saved_results
+./log_gpt-6b-0.5-True
