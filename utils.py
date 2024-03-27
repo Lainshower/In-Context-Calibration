@@ -402,8 +402,6 @@ def get_model_response(params, train_sentences, train_labels, test_sentences, re
     else:
         prompts = override_prompt
 
-    # Model Instiantiate 여기로 끌고 오기..
-
     chunked_prompts = list(chunks(prompts, chunk_size_helper(params)))
     for chunk_id, test_chunk_prompts in enumerate(chunked_prompts):
         if num_tokens_to_predict_override is not None:
